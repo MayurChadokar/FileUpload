@@ -1,102 +1,73 @@
-const file=require("../models/file");
-const cloudinary= require('cloudinary').v2;
+const cloudinary = require("cloudinary").v2;
+const File = require("../models/file"); // Ensure this is your Mongoose model
 
+exports.localUpload = async (req, res) => {
+  try {
+    if (!req.files || !req.files.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
 
-exports.localUpload= async (req,res) => {
-    try{
-       const uploadfile=req.files.file;
-       console.log("file is that " ,uploadfile);
+    const uploadFile = req.files.file;
+    const path = __dirname + "/files/" + Date.now() + `.${uploadFile.name.split(".").pop()}`;
 
-       let path= __dirname + "/files/" + Date.now()+ `.${uploadfile.name.split('.')[1]}`;
-    
-
-       uploadfile.mv(path,(error)=>{
+    uploadFile.mv(path, (error) => {
+      if (error) {
         console.error(error);
+        return res.status(500).json({ success: false, message: "File could not be saved locally" });
+      }
 
-       });
+      return res.status(200).json({ success: true, message: "File uploaded successfully" });
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "File could not upload" });
+  }
+};
 
-      return res.status(200).json({
-        success:true,
-        message:"fileupload successfully",
+function isSupported(file, supportedFileTypes) {
+  const fileType = file.name.split(".").pop().toLowerCase();
+  return supportedFileTypes.includes(fileType);
+}
 
-       });
+async function uploadToCloudinary(file, folder) {
+  const options = { folder };
+  const result = await cloudinary.uploader.upload(file.tempFilePath, options);
+  return result;
+}
+
+exports.imageUpload = async (req, res) => {
+  try {
+    const { name, email, tag } = req.body;
+    const file = req.files?.imageFile;
+
+    if (!file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
     }
-    catch(error){
-     return res.status(500).json({
-        success:false,
-        message:"file could not upload",
-     })
+
+    const supportedFileTypes = ["jpg", "jpeg", "png"];
+    if (!isSupported(file, supportedFileTypes)) {
+      return res.status(415).json({ success: false, message: "Invalid file type" });
     }
-}
 
+    const response = await uploadToCloudinary(file, "mayurchadokar");
 
-function issupported(file, supportedFile){
-   const fileType=file.name.split('.')[1].toLowerCase();
-   return supportedFile.includes(fileType);
+    const fileData = await File.create({
+      name,
+      email,
+      tag,
+      imageURL: response.secure_url,
+    });
 
-}
-
-
-async function uploadToCloudianry(file, folder) {
-   const options={ folder };
-
-   const result = await cloudinary.uploader.upload(file, options);
-    return result; 
-}
-
-
-exports.imageUpload = async (req,res)=> {
-try{
- const {name, email, tag}=req.body;
- const file= req.files.imageFile;
- console.log(file);
- console.log(name,email,tag);
-
-
-const supportFile= ["jpg","jpeg","png"];
-console.log("file is supored ",issupported(file,supportFile));
-
- //if file is not supported
-if(!issupported(file,supportFile)){
-   res.status(415).json({
-      success:false,
-      messsage:"invalid file, does not supported file",
-
-   });
-
-   // if file is supported in system
-
-const response =await uploadToCloudianry(file,"mayurchadokar");
- console.log(response);
-
- const fileData= await file.Create({
-   name,
-   email,
-   tag,
-   imageURL:response.secure_url,
-
- });
-
-
- res.json({
-   success:true,
-   message:"image upload success fully"
-
- });
-
-
-
-}
-
-}
-catch(error){
-   console.error(error);
-   return res.json({
-      success:false,
-      message:"something want wrong"
-
-   });
-
-
-}
-}
+    res.status(200).json({
+      success: true,
+      message: "Image uploaded successfully",
+      data: fileData,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
+};
